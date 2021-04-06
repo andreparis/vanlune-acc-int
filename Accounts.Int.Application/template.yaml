@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 'AWS::Serverless-2016-10-31'
+Description: An AWS Serverless Application.
+Parameters:
+  EnvironmentType:
+    Description: The environment type
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - uat
+      - prod
+    ConstraintDescription: 'Must be dev, uat or prod'
+Mappings:
+  EnvironmentVariablesMap:
+    Function.Properties.CodeUri.Bucket:
+      dev: vanlune-bin-dev
+      uat: vanlune-bin-uat
+      prod: vanlune-bin-prod
+    Stage.ApiGateway:
+      dev: Dev
+      uat: Uat
+      prod: Prod
+Resources:
+ # API Functinos
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Auth: 
+        AddDefaultAuthorizerToCorsPreflight: False
+        Authorizers: 
+          LambdaAuth: 
+            FunctionArn: arn:aws:lambda:us-east-1:277944362602:function:vanlune-auth
+            FunctionPayloadType: TOKEN
+            Type: Lambda
+            Identity:
+              Header: AuthorizationToken
+              ReauthorizeEvery: 0
+        DefaultAuthorizer: LambdaAuth
+      StageName: !FindInMap 
+        - EnvironmentVariablesMap
+        - Stage.ApiGateway
+        - !Ref EnvironmentType
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+  
+ #Accounts.Int
+  AuthenticateAccount:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: vanlune-accounts-int-authenticate
+      Handler: >-
+        Accounts.Int.Application::Accounts.Int.Application.Function::AuthenticateAccount
+      Runtime: dotnetcore3.1
+      CodeUri:
+        Bucket: !FindInMap 
+          - EnvironmentVariablesMap
+          - Function.Properties.CodeUri.Bucket
+          - !Ref EnvironmentType
+        Key: Accounts.Int.zip
+      MemorySize: 256
+      Timeout: 900
+      Role: !Join ['', ['arn:aws:iam::', !Ref 'AWS::AccountId', ':role/role-lambda-vanlune']]
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Tracing: Active
+      Events:
+        HttpPost: 
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: '/int/accounts/auth'
+            Method: post
+            Auth:
+                Authorizers: null
+                DefaultAuthorizer: null 
+      Environment:
+        Variables:
+          FACEBOOK_VALIDATED: "https://graph.facebook.com/me"
+  AuthenticateAccountGoogle:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: vanlune-accounts-int-google
+      Handler: >-
+        Accounts.Int.Application::Accounts.Int.Application.Function::AuthenticateAccountGoogle
+      Runtime: dotnetcore3.1
+      CodeUri:
+        Bucket: !FindInMap 
+          - EnvironmentVariablesMap
+          - Function.Properties.CodeUri.Bucket
+          - !Ref EnvironmentType
+        Key: Accounts.Int.zip
+      MemorySize: 256
+      Timeout: 900
+      Role: !Join ['', ['arn:aws:iam::', !Ref 'AWS::AccountId', ':role/role-lambda-vanlune']]
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      Tracing: Active
+      Events:
+        HttpPost: 
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: '/int/accounts/google'
+            Method: post
+            Auth:
+                Authorizers: null
+                DefaultAuthorizer: null 
+      Environment:
+        Variables:
+          GOOGLE_VALIDATED: "https://www.googleapis.com/oauth2/v1/tokeninfo"
+  
